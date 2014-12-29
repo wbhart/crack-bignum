@@ -1,0 +1,8 @@
+crack-bignum
+------------
+
+A rudimentary bignum (GMP) wrapper for the crack language.
+
+N.B: it contains many bugs I am sure. This is immature code!
+
+William Hart -- Dec 2014
