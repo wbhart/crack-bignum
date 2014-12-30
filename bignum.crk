@@ -61,7 +61,8 @@
 #     therefore need to be a method for generic classes not a global function.
 
 import "libmpir.so" __gmpn_add, __gmpn_sub, __gmpn_add_1, __gmpn_sub_1, __gmpn_mul, 
-       __gmpn_mul_1, __gmpn_divmod_1, __gmpn_cmp, __gmpn_get_str;
+       __gmpn_mul_1, __gmpn_divmod_1, __gmpn_tdiv_qr, __gmpn_copyi, __gmpn_cmp,
+       __gmpn_get_str;
 import "libc.so.6" malloc, realloc, free, memcpy;
 import crack.io cout;
 import crack.lang Formatter, Exception, Buffer;
@@ -79,8 +80,11 @@ intz __gmpn_sub_1(array[intz] r, array[intz] a, intz lena, intz b);
 intz __gmpn_mul(array[intz] r, array[intz] a, intz lena, array[intz] b, intz lenb);
 intz __gmpn_mul_1(array[intz] r, array[intz] a, intz lena, intz b);
 intz __gmpn_divmod_1(array[intz] r, array[intz] a, intz lena, intz b);
+void __gmpn_tdiv_qr(array[intz] q, array[intz] r, intz qxn, array[intz] a, 
+                                              intz lena, array[intz] b, intz lenb);
 intz __gmpn_cmp(array[intz] a, array[intz] b, intz lenb);
 intz __gmpn_get_str(byteptr str, intz base, array[intz] b, intz lenb);
+void __gmpn_copyi(array[intz] dst, array[intz] src, intz n);
 
 byteptr malloc(intz size);
 byteptr realloc(byteptr val, intz newsize);
@@ -582,6 +586,76 @@ class Integer {
 
       return this;
    }
+
+   Integer oper /(Integer b) {
+      if (b.size == 0)
+         throw Exception('divide by zero');
+
+      q := Integer();
+      r := Integer();
+      asize := abs(size);
+      bsize := abs(b.size);
+
+      qsize := asize - bsize + 1;
+      
+      if (qsize > 0) {
+         q.fit(qsize);
+         r.fit(bsize);
+      
+         __gmpn_tdiv_qr(q.data, r.data, 0, data, asize, b.data, bsize);
+      
+         if (q.data[qsize - 1] == 0)
+            qsize -= 1;
+
+         r.size = r.normalise(bsize);
+      } else
+         qsize = 0;
+         # r.size not needed in this case
+
+      q.size = (size ^ b.size) < 0 ? -qsize : qsize;
+
+      if (q.size < 0 && r.size != 0)
+         q -= 1;
+
+      return q;
+   }
+
+   Integer oper %(Integer b) {
+      if (b.size == 0)
+         throw Exception('divide by zero');
+
+      q := Integer();
+      r := Integer();
+      asize := abs(size);
+      bsize := abs(b.size);
+
+      qsize := asize - bsize + 1;
+      
+      if (qsize > 0) {
+         q.fit(qsize);
+         r.fit(bsize);
+      
+         __gmpn_tdiv_qr(q.data, r.data, 0, data, asize, b.data, bsize);
+      
+         if (q.data[qsize - 1] == 0)
+            qsize -= 1;
+
+         r.size = r.normalise(bsize);
+      } else {
+         qsize = 0;
+         __gmpn_copyi(r.data, data, size);
+         r.size = asize;
+      }
+
+      q.size = (size ^ b.size) < 0 ? -qsize : qsize;
+
+      if (q.size < 0 && r.size != 0)
+         r += b;
+
+      return r;
+   }
+
+
 }
 
 class IntegerRingClass : Parent {
@@ -600,11 +674,11 @@ Parent parent(Integer a) {
    return IntegerRing;
 }
 
-/********************************************************
+/*******************************************************
 
    Examples of usage:
 
-********************************************************/
+*******************************************************/
 
 /*
 
@@ -634,7 +708,21 @@ for (i := 0; i < 10; i++)
 
 cout `$(c)\n`;
 
+n := 13;
+
+for (i := 0; i < 10; i++)
+   c = c * 13;
+
+cout `$(c)\n`;
+
+for (i := 0; i < 10; i++)
+   c /= n;
+
+cout `$(c)\n`;
+
 cout `$(c % 13)\n`;
+
+cout `$(c % n)\n`;
 
 c %= 37;
 
