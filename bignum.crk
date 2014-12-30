@@ -59,6 +59,9 @@
 #     Integer class. This will have to be changed because we have generic
 #     classes and methods, but not generic ordinary functions, and parent() will
 #     therefore need to be a method for generic classes not a global function.
+#   * Crack doesn't have tuples so no easy way to return q, r from divrem. Can
+#     pass q and r in, but crack doesn't allow q -= 1, etc., which means we have
+#     to do memory management inefficiently for divrem functions and xgcd, etc.
 
 import "libmpir.so" __gmpn_add, __gmpn_sub, __gmpn_add_1, __gmpn_sub_1, __gmpn_mul, 
        __gmpn_mul_1, __gmpn_divmod_1, __gmpn_tdiv_qr, __gmpn_copyi, __gmpn_cmp,
@@ -654,9 +657,95 @@ class Integer {
 
       return r;
    }
+}
 
+void swap(Integer a, Integer b) {
+   tdata := a.data;
+   a.data = b.data;
+   b.data = tdata;
+   tsize := a.size;
+   a.size = b.size;
+   b.size = tsize;
+   talloc := a.alloc;
+   a.alloc = b.alloc;
+   b.alloc = talloc;
 
 }
+
+intz divrem(Integer q, Integer a, intz b) {
+   if (b == 0)
+      throw Exception('divide by zero');
+
+   asize := abs(a.size);
+   
+   q2 := Integer();
+      
+   if (asize == 0) {
+      q2.size = 0;
+      
+      swap(q, q2);
+
+      return 0;
+   }
+
+   q2.fit(asize);
+      
+   r := __gmpn_divmod_1(q2.data, a.data, asize, abs(b));
+      
+   if (q2.data[asize - 1] == 0)
+      asize -= 1;
+
+   r = a.size > 0 ? r : -r;
+   q2.size = (a.size ^ b) < 0 ? -asize : asize;
+
+   if (q2.size < 0 && r != 0) {
+      q2 -= 1;
+      r += b;
+   }
+
+   swap(q, q2);
+
+   return r;
+}
+
+void divrem(Integer q, Integer r, Integer a, Integer b) {
+   if (b.size == 0)
+      throw Exception('divide by zero');
+
+   q2 := Integer();
+   r2 := Integer();
+   asize := abs(a.size);
+   bsize := abs(b.size);
+
+   qsize := asize - bsize + 1;
+      
+   if (qsize > 0) {
+      q2.fit(qsize);
+      r2.fit(bsize);
+      
+      __gmpn_tdiv_qr(q2.data, r2.data, 0, a.data, asize, b.data, bsize);
+      
+      if (q.data[qsize - 1] == 0)
+         qsize -= 1;
+
+      r2.size = r2.normalise(bsize);
+   } else {
+      qsize = 0;
+      __gmpn_copyi(r.data, a.data, a.size);
+      r2.size = asize;
+   }
+
+   q2.size = (a.size ^ b.size) < 0 ? -qsize : qsize;
+
+   if (q2.size < 0 && r2.size != 0) {
+      q2 -= 1;
+      r2 += b;
+   }
+
+   swap(q, q2);
+   swap(r, r2);
+}
+
 
 class IntegerRingClass : Parent {
    oper init() { desc = "Integer ring"; }
