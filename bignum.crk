@@ -71,12 +71,17 @@
 #     divrem and gcd ought to be methods, not generic functions, and this
 #     kinda makes passing return values back via arguments a bad idea. Tuples
 #     are a sensible solution, but not explicitly supported by crack.
+#     On the other hand, there is no good way to deal with 
+#     q, r = divrem(intz a, T b) without making divrem a generic function. It
+#     can't easily be made a method of the class T.
 
 import "libmpir.so" __gmpn_add, __gmpn_sub, __gmpn_add_1, __gmpn_sub_1, __gmpn_mul, 
-       __gmpn_mul_1, __gmpn_divmod_1, __gmpn_tdiv_qr, __gmpn_copyi, __gmpn_cmp,
-       __gmpn_get_str, __gmpn_scan1, __gmpn_gcd, __gmpn_rshift, __gmpn_lshift,
-       __gmpn_zero;
+       __gmpn_mul_1, __gmpn_divmod_1, __gmpn_tdiv_qr, __gmpn_copyi, __gmpn_copyd,
+       __gmpn_cmp, __gmpn_get_str, __gmpn_scan1, __gmpn_gcd, __gmpn_rshift,
+       __gmpn_lshift, __gmpn_zero;
+
 import "libc.so.6" malloc, realloc, free, memcpy;
+
 import crack.io cout;
 import crack.lang Formatter, Exception, Buffer;
 import crack.ascii radix;
@@ -99,6 +104,7 @@ intz __gmpn_gcd(array[intz] r, array[intz] a, intz lena, array[intz] b, intz len
 intz __gmpn_cmp(array[intz] a, array[intz] b, intz lenb);
 intz __gmpn_get_str(byteptr str, intz base, array[intz] b, intz lenb);
 void __gmpn_copyi(array[intz] dst, array[intz] src, intz n);
+void __gmpn_copyd(array[intz] dst, array[intz] src, intz n);
 intz __gmpn_rshift(array[intz] r, array[intz] a, intz lena, intz bits);
 intz __gmpn_lshift(array[intz] r, array[intz] a, intz lena, intz bits);
 intz __gmpn_scan1(array[intz] a, intz bit);
@@ -713,6 +719,140 @@ class Integer {
 
       return r;
    }
+
+   Integer oper >>(intz shift) {
+      if (shift < 0)
+         throw Exception('shift by negative number of bits');
+
+      if (shift == 0)
+         return this;
+
+      r := Integer();
+
+      if (shift >= bits())
+         return r;
+      
+      asize := abs(size);
+      
+      slimbs := shift/bits_per_word;
+      sbits := shift%bits_per_word;
+
+      asize -= slimbs;
+
+      r.fit(asize);
+
+      if (sbits == 0)
+         __gmpn_copyi(r.data, data + slimbs, asize);
+      else
+         __gmpn_rshift(r.data, data + slimbs, asize, sbits);
+
+      if (r.data[asize - 1] == 0)
+         asize -= 1;
+
+      r.size = size < 0 ? -asize : asize;
+
+      return r;
+   }
+
+   Integer oper <<(intz shift) {
+      if (shift < 0)
+         throw Exception('shift by negative number of bits');
+
+      if (shift == 0)
+         return this;
+
+      r := Integer();
+
+      asize := abs(size);
+      
+      slimbs := shift/bits_per_word;
+      sbits := shift%bits_per_word;
+
+      asize += slimbs;
+
+      if (sbits == 0) {
+         r.fit(asize);
+         __gmpn_copyi(r.data + slimbs, data, asize - slimbs);
+      } else {
+         r.fit(asize + 1);
+         r.data[asize] = __gmpn_lshift(r.data + slimbs, data, asize - slimbs, sbits);
+         if (r.data[asize] != 0)
+            asize += 1;
+      }
+
+      if (slimbs != 0)
+         __gmpn_zero(r.data, slimbs);
+
+      r.size = size < 0 ? -asize : asize;
+
+      return r;
+   }
+
+   Integer oper >>=(intz shift) {
+      if (shift < 0)
+         throw Exception('shift by negative number of bits');
+
+      if (shift == 0)
+         return this;
+
+      if (shift >= bits()) {
+         size = 0;
+         return this;
+      }
+      
+      asize := abs(size);
+      
+      slimbs := shift/bits_per_word;
+      sbits := shift%bits_per_word;
+
+      asize -= slimbs;
+
+      if (sbits == 0)
+         __gmpn_copyi(data, data + slimbs, asize);
+      else
+         __gmpn_rshift(data, data + slimbs, asize, sbits);
+
+      if (data[asize - 1] == 0)
+         asize -= 1;
+
+      size = size < 0 ? -asize : asize;
+
+      return this;
+   }
+
+   Integer oper <<=(intz shift) {
+      if (shift < 0)
+         throw Exception('shift by negative number of bits');
+
+      if (shift == 0)
+         return this;
+
+      asize := abs(size);
+      
+      slimbs := shift/bits_per_word;
+      sbits := shift%bits_per_word;
+
+      asize += slimbs;
+
+      if (sbits == 0) {
+         fit(asize);
+         __gmpn_copyd(data + slimbs, data, asize - slimbs);
+      } else {
+         fit(asize + 1);
+         data[asize] = __gmpn_lshift(data + slimbs, data, asize - slimbs, sbits);
+         if (data[asize] != 0)
+            asize += 1;
+      }
+
+      if (slimbs != 0)
+         __gmpn_zero(data, slimbs);
+
+      size = size < 0 ? -asize : asize;
+
+      return this;
+   }
+
+
 }
 
 void swap(Integer a, Integer b) {
@@ -896,6 +1036,8 @@ Parent parent(Integer a) {
 
 *******************************************************/
 
+/*
+
 a := Integer(1);
 c := Integer(12);
 d := ZZ(-1);
@@ -960,3 +1102,18 @@ d = gcd(a, c);
 
 cout `$(d)\n`;
 
+cout `$(c>>2)\n`;
+
+c >>= 2;
+
+cout `$(c)\n`;
+
+cout `$(c<<20)\n`;
+
+cout `$(c<<200)\n`;
+
+c <<= 20;
+
+cout `$(c)\n`;
+
+*/
