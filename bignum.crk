@@ -60,8 +60,17 @@
 #     classes and methods, but not generic ordinary functions, and parent() will
 #     therefore need to be a method for generic classes not a global function.
 #   * Crack doesn't have tuples so no easy way to return q, r from divrem. Can
-#     pass q and r in, but crack doesn't allow q -= 1, etc., which means we have
+#     pass q and r in, but crack doesn't allow q -= 1, etc, which means we have
 #     to do memory management inefficiently for divrem functions and xgcd, etc.
+#     It is also a very bad idea to have global functions of the form
+#     divrem(T q, T r, T a, T b) instead of a divrem that returns a tuple
+#     q, r = divrem(T a, T b) because Integers aren't the only thing that needs
+#     a divrem or xgcd function. Doing things this way is encouraging the
+#     need for multiple dispatch over generic types, which is a massive
+#     undertaking, and somewhat dual to the class based OOP approach. Obviously
+#     divrem and gcd ought to be methods, not generic functions, and this
+#     kinda makes passing return values back via arguments a bad idea. Tuples
+#     are a sensible solution, but not explicitly supported by crack.
 
 import "libmpir.so" __gmpn_add, __gmpn_sub, __gmpn_add_1, __gmpn_sub_1, __gmpn_mul, 
        __gmpn_mul_1, __gmpn_divmod_1, __gmpn_tdiv_qr, __gmpn_copyi, __gmpn_cmp,
