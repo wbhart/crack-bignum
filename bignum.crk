@@ -65,7 +65,8 @@
 
 import "libmpir.so" __gmpn_add, __gmpn_sub, __gmpn_add_1, __gmpn_sub_1, __gmpn_mul, 
        __gmpn_mul_1, __gmpn_divmod_1, __gmpn_tdiv_qr, __gmpn_copyi, __gmpn_cmp,
-       __gmpn_get_str;
+       __gmpn_get_str, __gmpn_scan1, __gmpn_gcd, __gmpn_rshift, __gmpn_lshift,
+       __gmpn_zero;
 import "libc.so.6" malloc, realloc, free, memcpy;
 import crack.io cout;
 import crack.lang Formatter, Exception, Buffer;
@@ -83,11 +84,16 @@ intz __gmpn_sub_1(array[intz] r, array[intz] a, intz lena, intz b);
 intz __gmpn_mul(array[intz] r, array[intz] a, intz lena, array[intz] b, intz lenb);
 intz __gmpn_mul_1(array[intz] r, array[intz] a, intz lena, intz b);
 intz __gmpn_divmod_1(array[intz] r, array[intz] a, intz lena, intz b);
-void __gmpn_tdiv_qr(array[intz] q, array[intz] r, intz qxn, array[intz] a, 
+void __gmpn_tdiv_qr(array[intz] q, array[intz] r, intz qxn, array[intz] a,
                                               intz lena, array[intz] b, intz lenb);
+intz __gmpn_gcd(array[intz] r, array[intz] a, intz lena, array[intz] b, intz lenb);
 intz __gmpn_cmp(array[intz] a, array[intz] b, intz lenb);
 intz __gmpn_get_str(byteptr str, intz base, array[intz] b, intz lenb);
 void __gmpn_copyi(array[intz] dst, array[intz] src, intz n);
+intz __gmpn_rshift(array[intz] r, array[intz] a, intz lena, intz bits);
+intz __gmpn_lshift(array[intz] r, array[intz] a, intz lena, intz bits);
+intz __gmpn_scan1(array[intz] a, intz bit);
+void __gmpn_zero(array[intz] a, intz n);
 
 byteptr malloc(intz size);
 byteptr realloc(byteptr val, intz newsize);
@@ -194,6 +200,30 @@ class Integer {
 
          return size < 0 ? -r : r;
       }
+   }
+
+   intz bits() {
+      asize := abs(size);
+      
+      if (asize == 0)
+         return 0;
+
+      lead := data[asize - 1];
+      b := 0;
+
+      while (lead != 0) { # FIXME: this should use a clz intrinsic
+         b += 1;
+         lead >>= 1;
+      }
+
+      return b + (asize - 1)*bits_per_word;
+   }
+
+   intz trailing_zeroes() {
+      if (size == 0)
+         return 0;
+
+      return __gmpn_scan1(data, 0);
    }
 
    Integer oper +(Integer b) {
@@ -739,7 +769,7 @@ void divrem(Integer q, Integer r, Integer a, Integer b) {
    if (qsize > 0) {
       q2.fit(qsize);
       r2.fit(bsize);
-      
+       
       __gmpn_tdiv_qr(q2.data, r2.data, 0, a.data, asize, b.data, bsize);
       
       if (q.data[qsize - 1] == 0)
@@ -763,6 +793,77 @@ void divrem(Integer q, Integer r, Integer a, Integer b) {
    swap(r, r2);
 }
 
+Integer gcd(Integer m, Integer n) {
+   if (m.size == 0)
+      return n;
+
+   if (n.size == 0)
+      return m;
+
+   Integer a, b;
+   r := Integer();
+   intz atrail;
+
+   mtrail := m.trailing_zeroes();
+   ntrail := n.trailing_zeroes();
+   mbits := m.bits();
+   nbits := n.bits();
+   
+   if (mbits - mtrail < nbits - ntrail) {
+      a = m;
+      b = n;
+      atrail = mtrail;
+   } else {
+      a = n;
+      b = m;
+      atrail = ntrail;
+   }
+
+   asize := abs(a.size);
+   bsize := abs(b.size);
+      
+   r.fit(min(asize, bsize));
+
+   slimbs := atrail/bits_per_word;
+   sbits := atrail%bits_per_word;
+
+   asize -= slimbs;
+
+   acopy := array[intz](asize);
+   bcopy := array[intz](bsize);
+
+   __gmpn_copyi(bcopy, b.data, bsize);
+
+   if (sbits == 0)
+      __gmpn_copyi(acopy, a.data + slimbs, asize);
+   else
+      __gmpn_rshift(acopy, a.data + slimbs, asize, sbits);
+
+   if (acopy[asize - 1] == 0)
+      asize -= 1;
+
+   rshift := min(mtrail, ntrail);
+   rlimbs := rshift/bits_per_word;
+   rbits := rshift%bits_per_word;
+
+   rsize := __gmpn_gcd(r.data + rlimbs, bcopy, bsize, acopy, asize);
+
+   if (rlimbs != 0)
+      __gmpn_zero(r.data, rlimbs);
+
+   if (rbits) {
+      cy := __gmpn_lshift(r.data + rlimbs, r.data + rlimbs, rsize, rbits);
+      if (cy != 0)
+         r.data[rlimbs + rsize] = cy;
+      rsize += 1;
+   }
+
+   rsize += rlimbs;
+
+   r.size = a.size < 0 && b.size < 0 ? -rsize : rsize;
+
+   return r;          
+}
 
 class IntegerRingClass : Parent {
    oper init() { desc = "Integer ring"; }
@@ -841,4 +942,12 @@ cout `$(c < n)\n`;
 cout `$(d >= m)\n`;
 
 cout `$(n != d)\n`;
+
+cout `$(c.bits())\n`;
+
+cout `$(c.trailing_zeroes())\n`;
+
+d = gcd(a, c);
+
+cout `$(d)\n`;
 
