@@ -1249,3 +1249,21 @@ cout `c = $(c)\n`;
 cout `-c = $(-c)\n`;
 
 */
+
+/* further simple example
+
+Integer factorial(intz n) {
+   if (n < 0)
+      throw Exception('factorial of a negative number');
+
+   if (n <= 1)
+      return Integer(1);
+
+   return factorial(n - 1)*n;
+}
+
+s := factorial(1000);
+
+cout `$(s)\n`;
+
+*/
