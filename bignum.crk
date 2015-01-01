@@ -77,7 +77,7 @@
 #     q, r = divrem(intz a, T b) without making divrem a generic function. It
 #     can't easily be made a method of the class T.
 
-import "libmpir.so" __gmpn_add, __gmpn_sub, __gmpn_add_1, __gmpn_sub_1, __gmpn_mul, 
+import "libgmp.so" __gmpn_add, __gmpn_sub, __gmpn_add_1, __gmpn_sub_1, __gmpn_mul, 
        __gmpn_mul_1, __gmpn_divmod_1, __gmpn_tdiv_qr, __gmpn_copyi, __gmpn_copyd,
        __gmpn_cmp, __gmpn_get_str, __gmpn_scan1, __gmpn_gcd, __gmpn_gcdext,
        __gmpn_rshift, __gmpn_lshift, __gmpn_zero, __gmpn_set_str;
