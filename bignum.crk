@@ -80,14 +80,15 @@
 import "libmpir.so" __gmpn_add, __gmpn_sub, __gmpn_add_1, __gmpn_sub_1, __gmpn_mul, 
        __gmpn_mul_1, __gmpn_divmod_1, __gmpn_tdiv_qr, __gmpn_copyi, __gmpn_copyd,
        __gmpn_cmp, __gmpn_get_str, __gmpn_scan1, __gmpn_gcd, __gmpn_gcdext,
-       __gmpn_rshift, __gmpn_lshift, __gmpn_zero;
+       __gmpn_rshift, __gmpn_lshift, __gmpn_zero, __gmpn_set_str;
 
 import "libc.so.6" malloc, realloc, free, memcpy;
 
 import crack.io cout;
-import crack.lang Formatter, Exception, Buffer;
+import crack.lang Formatter, Exception, Buffer, CString;
 import crack.ascii radix;
 import crack.math ceil;
+import crack.runtime strcpy;
 
 # redefine these for 32 bit machines
 const bytes_per_word := 8;
@@ -112,6 +113,7 @@ intz __gmpn_rshift(array[intz] r, array[intz] a, intz lena, intz bits);
 intz __gmpn_lshift(array[intz] r, array[intz] a, intz lena, intz bits);
 intz __gmpn_scan1(array[intz] a, intz bit);
 void __gmpn_zero(array[intz] a, intz n);
+intz __gmpn_set_str(array[intz] b, byteptr str, intz str_size, intz base);
 
 byteptr malloc(intz size);
 byteptr realloc(byteptr val, intz newsize);
@@ -161,6 +163,33 @@ class Integer {
    }
 
    oper init() : size = 0, alloc = 0, data = null {}
+
+   oper init(String s) {
+      digits := s.size;
+ 
+      cstr := byteptr(s.size + 1);
+      strcpy(cstr, CString(s).buffer);
+
+      cstr_start := cstr;
+      if (cstr[0] == b'-') {
+         cstr_start += 1;
+         digits -= 1;
+      }
+
+      limbs := int(ceil(0.103810252 * float(digits) * (bits_per_word/32)));
+      
+      data = array[intz](limbs);
+      alloc = limbs;
+
+      for (i := 0; i < digits; i++)
+         cstr_start[i] = cstr_start[i] - 48;
+
+      limbs = __gmpn_set_str(data, cstr_start, digits, 10);
+
+      size = cstr[0] == b'-' ? -limbs : limbs; 
+
+      free(cstr);
+   }
 
    oper del() { free(byteptr(data)); }
 
@@ -1120,6 +1149,8 @@ Parent parent(Integer a) {
 *******************************************************/
 
 /*
+
+cout `$(Integer("-1234567890112345789098765267876546789827656765456"))\n`;
 
 a := Integer(1);
 c := Integer(12);
