@@ -244,6 +244,21 @@ class Integer {
       return __gmpn_scan1(data, 0);
    }
 
+   Integer copy() {
+     r := Integer();
+     asize := abs(size);
+
+     if (asize == 0)
+        return r;
+
+     r.fit(asize);
+
+     __gmpn_copyi(r.data, data, asize);
+     r.size = size;
+
+     return r;
+   }
+
    Integer oper -() {
      r := Integer();
      asize := abs(size);
