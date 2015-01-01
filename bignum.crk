@@ -5,6 +5,7 @@
 # MIT or 2-clause BSD both ok.
 #
 # Features:
+#
 #   * Use low level GMP mpn functions. This is more efficient for some of the
 #     operators, since GMP mpz's cannot assume there is no aliasing. We can.
 #   * No wrapping of a GMP object with a crack object. We do all memory
@@ -35,7 +36,8 @@
 #     makes sense that it should be able to be used as a constructor for
 #     Integers.
 #
-# Disadvantages:
+# Issues:
+#
 #   * Bigint arithmetic is somehow a worst case for reference counting. It can
 #     make things up to 100x slower.
 #   * Using immutable structs is probably more efficient than heap allocated
@@ -77,8 +79,8 @@
 
 import "libmpir.so" __gmpn_add, __gmpn_sub, __gmpn_add_1, __gmpn_sub_1, __gmpn_mul, 
        __gmpn_mul_1, __gmpn_divmod_1, __gmpn_tdiv_qr, __gmpn_copyi, __gmpn_copyd,
-       __gmpn_cmp, __gmpn_get_str, __gmpn_scan1, __gmpn_gcd, __gmpn_rshift,
-       __gmpn_lshift, __gmpn_zero;
+       __gmpn_cmp, __gmpn_get_str, __gmpn_scan1, __gmpn_gcd, __gmpn_gcdext,
+       __gmpn_rshift, __gmpn_lshift, __gmpn_zero;
 
 import "libc.so.6" malloc, realloc, free, memcpy;
 
@@ -101,6 +103,7 @@ intz __gmpn_divmod_1(array[intz] r, array[intz] a, intz lena, intz b);
 void __gmpn_tdiv_qr(array[intz] q, array[intz] r, intz qxn, array[intz] a,
                                               intz lena, array[intz] b, intz lenb);
 intz __gmpn_gcd(array[intz] r, array[intz] a, intz lena, array[intz] b, intz lenb);
+intz __gmpn_gcdext(array[intz] r, array[intz] s, array[intz] sn, array[intz] a, intz lena, array[intz] b, intz lenb);
 intz __gmpn_cmp(array[intz] a, array[intz] b, intz lenb);
 intz __gmpn_get_str(byteptr str, intz base, array[intz] b, intz lenb);
 void __gmpn_copyi(array[intz] dst, array[intz] src, intz n);
@@ -851,8 +854,6 @@ class Integer {
 
       return this;
    }
-
-
 }
 
 void swap(Integer a, Integer b) {
@@ -921,7 +922,9 @@ void divrem(Integer q, Integer r, Integer a, Integer b) {
        
       __gmpn_tdiv_qr(q2.data, r2.data, 0, a.data, asize, b.data, bsize);
       
-      if (q.data[qsize - 1] == 0)
+      cout `here-b2\n`;
+
+      if (q2.data[qsize - 1] == 0)
          qsize -= 1;
 
       r2.size = r2.normalise(bsize);
@@ -1014,6 +1017,56 @@ Integer gcd(Integer m, Integer n) {
    return r;          
 }
 
+Integer xgcd(Integer s, Integer t, Integer a, Integer b) {
+   asize := abs(a.size);
+   bsize := abs(b.size);
+      
+   if (asize < bsize || (asize == bsize && __gmpn_cmp(a.data, b.data, asize) < 0))
+      return xgcd(t, s, b, a);
+
+   if (bsize == 0) {
+      t.size = 0;
+      s.fit(1);
+      s.data[0] = 1;
+      s.size = 1;
+ 
+      return a;
+   }
+
+   g := Integer();
+   r := Integer();
+
+   ssize := asize + 1;
+
+   g.fit(ssize);
+   s.fit(ssize);
+
+   acopy := array[intz](asize + 1);
+   bcopy := array[intz](bsize + 1);
+   sn := array[intz](1);
+
+   __gmpn_copyi(acopy, a.data, asize);
+   __gmpn_copyi(bcopy, b.data, bsize);
+   acopy[asize] = 0;
+   bcopy[bsize] = 0;
+
+   gsize := __gmpn_gcdext(g.data, s.data, sn, acopy, asize, bcopy, bsize);
+
+   if (a.size < 0 && b.size < 0) {
+      g.size = -gsize;
+      s.size = -sn[0];
+   } else {
+      g.size = gsize;
+      s.size = sn[0];
+   }
+
+   temp := g - a*s;
+
+   divrem(t, r, temp, b);
+
+   return g;          
+}
+
 class IntegerRingClass : Parent {
    oper init() { desc = "Integer ring"; }
 
@@ -1036,11 +1089,13 @@ Parent parent(Integer a) {
 
 *******************************************************/
 
-/*
+/* 
 
 a := Integer(1);
 c := Integer(12);
 d := ZZ(-1);
+s := Integer();
+t := Integer();
 
 cout `$(c)\n`;
 
@@ -1115,5 +1170,19 @@ cout `$(c<<200)\n`;
 c <<= 20;
 
 cout `$(c)\n`;
+
+a = Integer(640);
+
+d = xgcd(s, t, a, c);
+
+cout `d = $(d)\n`;
+
+cout `s = $(s)\n`;
+
+cout `t = $(t)\n`;
+
+cout `a = $(a)\n`;
+
+cout `c = $(c)\n`;
 
 */
